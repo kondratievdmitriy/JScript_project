@@ -1,0 +1,110 @@
+var s = WScript.StdIn.ReadLine();
+var c = 0;
+var alf = new Object();
+for (var i = 0; i < s.length; i++) {
+    var h = s.charAt(i);
+    if (alf[h] === undefined) {
+        alf[h] = 1;
+        c++;
+    } else {
+        alf[h]++;
+    }
+}
+
+function Node(name, fr, pat, used, code) {
+    this.name = name;
+    this.fr = fr;
+    this.pat = pat;
+    this.used = used;
+    this.code = code;
+}
+
+var tree = new Array();
+for (var ch in alf) {
+    var node = new Node(ch, alf[ch], -1, false, "");
+    tree.push(node);
+}
+
+for (var k = 0; k < c - 1; k++) {
+    var m1 = -1, m2 = -1;
+    var min1 = Number.MAX_VALUE, min2 = Number.MAX_VALUE;
+    
+    for (var i = 0; i < tree.length; i++) {
+        if (!tree[i].used && tree[i].fr < min1) {
+            min2 = min1;
+            m2 = m1;
+            min1 = tree[i].fr;
+            m1 = i;
+        } else if (!tree[i].used && tree[i].fr < min2) {
+            min2 = tree[i].fr;
+            m2 = i;
+        }
+    }
+    
+    var newNode = new Node(tree[m1].name + tree[m2].name, tree[m1].fr + tree[m2].fr, -1, false, "");
+    
+    tree[m1].used = true;
+    tree[m2].used = true;
+    tree[m1].pat = tree.length;
+    tree[m2].pat = tree.length;
+    tree.push(newNode);
+}
+
+tree[tree.length - 1].code = "";
+
+for (var i = tree.length - 1; i >= 0; i--) {
+    if (tree[i].pat != -1) {
+        var parent = tree[tree[i].pat];
+        var parentName = parent.name;
+        if (parentName.indexOf(tree[i].name.charAt(0)) == 0) {
+            tree[i].code = parent.code + '0';
+        } else {
+            tree[i].code = parent.code + '1';
+        }
+    }
+}
+
+WScript.Echo("Huffman code table:");
+WScript.Echo("Symbol : Frequency : Code");
+for (var i = 0; i < tree.length; i++) {
+    if (tree[i].name.length == 1) {
+        WScript.Echo("'" + tree[i].name + "' : " + tree[i].fr + " : " + tree[i].code);
+    }
+}
+
+var encodedString = "";
+for (var i = 0; i < s.length; i++) {
+    var ch = s.charAt(i);
+    for (var j = 0; j < tree.length; j++) {
+        if (tree[j].name == ch && tree[j].name.length == 1) {
+            encodedString += tree[j].code;
+            break;
+        }
+    }
+}
+
+WScript.Echo("\nEncoded string:");
+WScript.Echo(encodedString);
+
+var decodedString = "";
+var currentNode = tree.length - 1;
+
+for (var i = 0; i < encodedString.length; i++) {
+    var bit = encodedString.charAt(i);
+    var found = false;
+    for (var j = 0; j < tree.length; j++) {
+        if (tree[j].pat == currentNode && tree[j].code == tree[currentNode].code + bit) {
+            currentNode = j;
+            found = true;
+            break;
+        }
+    }
+    
+    if (tree[currentNode].name.length == 1) {
+        decodedString += tree[currentNode].name;
+        currentNode = tree.length - 1;
+    }
+}
+
+WScript.Echo("\nDecoded string:");
+WScript.Echo(decodedString);
