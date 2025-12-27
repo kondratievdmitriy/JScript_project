@@ -1,0 +1,119 @@
+var GFT = {
+    ' ': 0.182884, 'E': 0.102666, 'T': 0.075169, 'A': 0.065321, 'O': 0.061595,
+    'N': 0.057120, 'I': 0.056684, 'S': 0.053170, 'R': 0.049879, 'H': 0.049785,
+    'L': 0.033175, 'D': 0.032829, 'U': 0.022757, 'C': 0.022336, 'M': 0.020265,
+    'F': 0.019830, 'W': 0.017038, 'G': 0.016249, 'P': 0.015043, 'Y': 0.014276,
+    'B': 0.012584, 'V': 0.007961, 'K': 0.005609, 'X': 0.001409, 'J': 0.000975,
+    'Q': 0.000836, 'Z': 0.000512,
+    ',': 0.015, '.': 0.015, '!': 0.005, '?': 0.005, ':': 0.003,
+    ';': 0.002, '-': 0.010, '"': 0.005, '(': 0.003, ')': 0.003,
+    'e': 0.080, 't': 0.060, 'a': 0.050, 'o': 0.045, 'n': 0.040,
+    'i': 0.040, 's': 0.035, 'r': 0.035, 'h': 0.030, 'l': 0.025,
+    'd': 0.020, 'u': 0.015, 'c': 0.015, 'm': 0.012, 'f': 0.012,
+    'w': 0.010, 'g': 0.009, 'p': 0.008, 'y': 0.007, 'b': 0.006,
+    'v': 0.004, 'k': 0.003, 'x': 0.001, 'j': 0.001, 'q': 0.0005,
+    'z': 0.0003
+};
+
+function calcShift(shift, s_length) {
+    if (shift >= 0 && shift < s_length) {
+        return shift;
+    }
+    
+    if (shift >= s_length) {
+        return shift % s_length;
+    }
+    
+    if (shift < 0 && Math.abs(shift) < s_length) {
+        return shift + s_length;
+    }
+    
+    if (shift < 0 && Math.abs(shift) >= s_length) {
+        return (shift % s_length) + s_length;
+    }
+}
+
+
+var alf = " .,!?:;-\"()ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+var fso = new ActiveXObject("Scripting.FileSystemObject");
+var inputFile = fso.OpenTextFile("cipher.txt", 1);
+var s = inputFile.ReadLine();
+var shift = parseInt(inputFile.ReadLine());
+inputFile.Close();
+
+WScript.Echo("The original text: " + s);
+WScript.Echo("Shift: " + shift);
+
+var a_shift = calcShift(shift, s.length);
+var e_text = "";
+
+for (var i = 0; i < s.length; i++) {
+    var c_char = s.charAt(i);
+    var c_index = alf.indexOf(c_char);
+    
+    if (c_index !== -1) {
+        var n_index = (c_index + a_shift) % alf.length;
+        e_text += alf.charAt(n_index);
+    } else {
+        e_text += c_char;
+    }
+}
+
+WScript.Echo("Encrypted text: " + e_text);
+
+var LFT = {};
+var t_chars = 0;
+
+for (var i = 0; i < e_text.length; i++) {
+    var char = e_text.charAt(i);
+    if (alf.indexOf(char) !== -1) {
+        LFT[char] = (LFT[char] || 0) + 1;
+        t_chars++;
+    }
+}
+
+for (var char in LFT) {
+    if (LFT.hasOwnProperty(char)) {
+        LFT[char] = LFT[char] / t_chars;
+    }
+}
+
+var res_shift = 0;
+var min_d = Number.MAX_VALUE;
+
+for (var b_shift = 0; b_shift < alf.length; b_shift++) {
+    var d = 0;
+    for (var i = 0; i < alf.length; i++) {
+        var c_char = alf.charAt(i);
+        var s_c_index = (i + b_shift) % alf.length;
+        var s_char = alf.charAt(s_c_index);
+        
+        var l_value = LFT[s_char] || 0;
+        var g_value = GFT[c_char] || 0;
+        
+        d += Math.pow(l_value - g_value, 2);
+    }
+    
+    if (d < min_d) {
+        min_d = d;
+        res_shift = b_shift;
+    }
+}
+
+WScript.Echo("The found shift: " + res_shift);
+WScript.Echo("Minimum discrepancy: " + min_d.toFixed(6));
+
+var d_text = "";
+for (var i = 0; i < e_text.length; i++) {
+    var c_char = e_text.charAt(i);
+    var c_index = alf.indexOf(c_char);
+    
+    if (c_index !== -1) {
+        var newIndex = (c_index - res_shift + alf.length) % alf.length;
+        d_text += alf.charAt(newIndex);
+    } else {
+        d_text += c_char;
+    }
+}
+
+WScript.Echo("The decrypted text: " + d_text);
