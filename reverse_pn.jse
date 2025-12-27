@@ -1,0 +1,125 @@
+var fso = new ActiveXObject("Scripting.FileSystemObject");
+var file = fso.OpenTextFile("expression.txt", 1);
+var lines = [];
+while (!file.AtEndOfStream) {
+    lines.push(file.ReadLine());
+}
+file.Close();
+
+var expression = lines[0];
+
+var variables = {};
+for (var i = 1; i < lines.length; i++) {
+    var line = lines[i];
+    if (line.length > 0) {
+        var parts = line.split(/\s+/);
+        if (parts.length >= 2) {
+            var varName = parts[0];
+            var value = parseFloat(parts[1]);
+            variables[varName] = value;
+        }
+    }
+}
+
+var output = [];
+var stack = [];
+var operators = {
+    '+': 1,
+    '-': 1,
+    '*': 2,
+    '/': 2,
+    '^': 3
+};
+
+var tokens = expression.split('');
+
+for (var i = 0; i < tokens.length; i++) {
+    var token = tokens[i];
+    
+    if (token === ' ') {
+		continue;
+	}
+    
+    if (/[a-zA-Z]/.test(token)) {
+        output.push(token);
+    }
+    else if (token in operators) {
+        while (stack.length > 0 && stack[stack.length - 1] !== '(' && operators[token] <= operators[stack[stack.length - 1]]) {
+            output.push(stack.pop());
+        }
+        stack.push(token);
+    }
+    else if (token === '(') {
+        stack.push(token);
+    }
+    else if (token === ')') {
+        while (stack.length > 0 && stack[stack.length - 1] !== '(') {
+            output.push(stack.pop());
+        }
+        if (stack.length > 0 && stack[stack.length - 1] === '(') {
+            stack.pop();
+        } else {
+            WScript.Echo("Error: unbalanced parentheses!");
+            WScript.Quit();
+        }
+    }
+}
+
+while (stack.length > 0) {
+    var op = stack.pop();
+    if (op === '(') {
+        WScript.Echo("Error: unbalanced parentheses!");
+        WScript.Quit();
+    }
+    output.push(op);
+}
+
+WScript.Echo("Original expression: " + expression);
+WScript.Echo("Reverse polish notation: " + output.join(''));
+
+var evalStack = [];
+for (var k = 0; k < output.length; k++) {
+    var token = output[k];
+    
+    if (token in operators) {
+        if (evalStack.length < 2) {
+            WScript.Echo("Error: not enough operands for the operation '" + token + "'");
+            WScript.Quit();
+        }
+        var b = evalStack.pop();
+        var a = evalStack.pop();
+        var res;
+        
+        switch (token) {
+            case '+':
+                res = a + b;
+                break;
+            case '-':
+                res = a - b;
+                break;
+            case '*':
+                res = a * b;
+                break;
+            case '/':
+                if (b === 0) {
+                    WScript.Echo("Error: division by zero!");
+                    WScript.Quit();
+                }
+                res = a / b;
+                break;
+            case '^':
+                res = Math.pow(a, b);
+                break;
+        }
+        evalStack.push(res);
+    } else {
+        evalStack.push(variables[token]);
+    }
+}
+
+if (evalStack.length !== 1) {
+    WScript.Echo("Error: Incorrect expression!");
+    WScript.Quit();
+}
+
+WScript.Echo("Calculation result: " + evalStack[0]);
