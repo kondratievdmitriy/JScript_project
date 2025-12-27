@@ -1,0 +1,144 @@
+// JScript: Поиск подстроки в строке с использованием конечного автомата
+// Строка читается из файла, подстрока вводится с консоли
+
+var fso = new ActiveXObject("Scripting.FileSystemObject");
+var ForReading = 1;
+
+// Функция построения таблицы переходов автомата
+function buildAutomaton(pattern) {
+    var m = pattern.length;
+    var alphabet = {};
+    
+    // Собираем все символы из шаблона
+    for (var i = 0; i < m; i++) {
+        alphabet[pattern.charAt(i)] = true;
+    }
+    
+    // Создаем таблицу переходов: delta[state][char]
+    var delta = new Array(m + 1);
+    for (var state = 0; state <= m; state++) {
+        delta[state] = new Object();
+    }
+    
+    // Для каждого состояния и каждого символа алфавита вычисляем переход
+    for (var state = 0; state <= m; state++) {
+        for (var char in alphabet) {
+            // Находим длину наибольшего префикса, который является суффиксом
+            // строки (текущий совпавший префикс + новый символ)
+            var k = Math.min(m, state + 1);
+            
+            while (k > 0) {
+                var prefix = pattern.substring(0, k);
+                var suffix = pattern.substring(state + 1 - k, state) + char;
+                
+                if (prefix === suffix) {
+                    break;
+                }
+                k--;
+            }
+            
+            delta[state][char] = k;
+        }
+    }
+    
+    return delta;
+}
+
+// Функция поиска всех вхождений подстроки в тексте
+function search(text, pattern) {
+    if (pattern.length === 0) {
+        WScript.Echo("Ошибка: подстрока пустая");
+        return;
+    }
+    
+    var m = pattern.length;
+    var n = text.length;
+    
+    // Строим автомат
+    var delta = buildAutomaton(pattern);
+    
+    // Поиск
+    var state = 0;
+    var positions = new Array();
+    
+    for (var i = 0; i < n; i++) {
+        var char = text.charAt(i);
+        
+        // Если символ есть в таблице переходов, используем её
+        if (delta[state][char] !== undefined) {
+            state = delta[state][char];
+        } else {
+            // Иначе переходим в начальное состояние
+            state = 0;
+        }
+        
+        // Если достигли конечного состояния - нашли вхождение
+        if (state === m) {
+            positions.push(i - m + 2); // +2 потому что индексация с 1 и нулевой символ
+            state = 0; // Продолжаем поиск дальше
+        }
+    }
+    
+    return positions;
+}
+
+// ============ ОСНОВНАЯ ПРОГРАММА ============
+
+WScript.Echo("=== Поиск подстроки методом конечного автомата ===");
+
+// Имя файла задано жестко (можно изменить)
+var fileName = "text_fda.txt";
+
+// Проверяем существование файла
+if (!fso.FileExists(fileName)) {
+    WScript.Echo("Ошибка: файл '" + fileName + "' не найден!");
+    WScript.Quit(1);
+}
+
+// Читаем текст из файла
+var file = fso.OpenTextFile(fileName, ForReading);
+var text = file.ReadAll();
+file.Close();
+
+WScript.Echo("Текст успешно загружен из файла '" + fileName + "'");
+WScript.Echo("Длина текста: " + text.length + " символов");
+
+// Вводим подстроку с консоли
+WScript.StdOut.Write("Введите подстроку для поиска: ");
+var pattern = WScript.StdIn.ReadLine().trim();
+
+if (pattern.length === 0) {
+    WScript.Echo("Ошибка: подстрока не введена");
+    WScript.Quit(1);
+}
+
+WScript.Echo("\nВыполняется поиск подстроки '" + pattern + "'...");
+
+// Выполняем поиск
+var positions = search(text, pattern);
+
+// Выводим результаты
+if (positions.length === 0) {
+    WScript.Echo("Подстрока '" + pattern + "' НЕ найдена в тексте.");
+} else {
+    WScript.Echo("Подстрока '" + pattern + "' найдена " + positions.length + " раз(а):");
+    for (var i = 0; i < positions.length; i++) {
+        WScript.Echo("  Позиция " + positions[i] + " (символ №" + positions[i] + ")");
+    }
+    
+    // Показываем контекст найденных вхождений
+    WScript.Echo("\nКонтекст найденных вхождений:");
+    for (var i = 0; i < positions.length; i++) {
+        var pos = positions[i] - 1; //转换为0-based索引
+        var start = Math.max(0, pos - 20);
+        var end = Math.min(text.length, pos + pattern.length + 20);
+        var context = text.substring(start, end);
+        
+        if (start > 0) context = "..." + context;
+        if (end < text.length) context = context + "...";
+        
+        WScript.Echo("Вхождение " + (i + 1) + ": " + context);
+    }
+}
+
+WScript.Echo("\nПоиск завершен.");
