@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Код Хэмминга</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 20px auto;
+            padding: 20px;
+        }
+        .container {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        input[type="text"] {
+            padding: 8px;
+            font-size: 16px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+        }
+        button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 3px;
+            cursor: pointer;
+            font-size: 16px;
+            width: 200px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .error {
+            color: red;
+            font-weight: bold;
+            margin-top: 5px;
+        }
+        .success {
+            color: green;
+            margin-top: 5px;
+        }
+        .bits-display {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 2px;
+            margin-top: 10px;
+        }
+        .bit {
+            width: 30px;
+            height: 30px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px solid #ccc;
+            font-family: monospace;
+            font-weight: bold;
+        }
+        .control-bit {
+            background-color: #e0f7fa;
+        }
+        .error-bit {
+            background-color: #ffcdd2;
+            color: #d32f2f;
+        }
+        .corrected-bit {
+            background-color: #c8e6c9;
+            color: #388e3c;
+        }
+        .info {
+            font-size: 14px;
+            color: #666;
+            margin-top: 5px;
+        }
+    </style>
+</head>
+<body>
+    <h1>Кодирование и декодирование Хэмминга</h1>
+    
+    <div class="container">
+        <!-- Шаг 1: Ввод данных -->
+        <div class="input-group">
+            <h3>1. Введите двоичную последовательность:</h3>
+            <input type="text" id="inputData" placeholder="Например: 1011" 
+                   onkeypress="checkBinary(event)">
+            <button onclick="encodeHamming()">Закодировать</button>
+            <div class="info">Разрешены только символы 0 и 1</div>
+        </div>
+
+        <!-- Шаг 2: Закодированные данные -->
+        <div class="input-group">
+            <h3>2. Закодированная последовательность:</h3>
+            <input type="text" id="encodedData" 
+                   placeholder="Здесь появится результат кодирования" 
+                   onkeypress="checkBinary(event)">
+            <div id="bitsVisualization" class="bits-display"></div>
+            <div class="info">Можно изменить биты для проверки исправления ошибок</div>
+        </div>
+
+        <!-- Шаг 3: Декодирование -->
+        <div class="input-group">
+            <h3>3. Декодированная последовательность:</h3>
+            <input type="text" id="decodedData" readonly 
+                   placeholder="Здесь появится результат декодирования">
+            <button onclick="decodeHamming()">Декодировать</button>
+            <div id="resultMessage"></div>
+        </div>
+
+        <!-- Информация о контрольных битах -->
+        <div class="input-group">
+            <h3>Информация:</h3>
+            <div id="infoContent">
+                <p>Контрольные биты находятся на позициях: <span id="controlBitsPositions">-</span></p>
+                <p>Длина исходных данных: <span id="originalLength">0</span> бит</p>
+                <p>Длина с контрольными битами: <span id="encodedLength">0</span> бит</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="hamming.js"></script>
+</body>
+</html>
