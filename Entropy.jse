@@ -1,0 +1,26 @@
+var s = WScript.StdIn.ReadLine();
+var c = 0;
+var a = new Array();
+for (var i = 0; i < s.length; i++) {
+    var h = s.charAt(i);
+    if (a[h] === undefined) {
+        a[h] = 1;
+        c++;
+    } else {
+        a[h]++;
+    }
+}
+
+var total = s.length;
+var entropy = 0;
+for (var key in a) {
+    var p = a[key] / total;
+    entropy += p * (Math.log(p) / Math.log(c));
+}
+entropy = -entropy;
+
+if (c == 1) {
+	WScript.Echo("Ёнтропи¤: 0");
+} else {
+	WScript.Echo("Ёнтропи¤: " + entropy);
+}
