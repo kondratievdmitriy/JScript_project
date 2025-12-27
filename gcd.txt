@@ -1,0 +1,34 @@
+start:
+in 100
+const 101 0
+== 100 101
+je first_zero
+in 102
+== 102 101
+je second_zero
+
+gcd_loop:
+== 100 102
+je found_gcd
+> 100 102 first_greater
+- 102 100 102
+jmp gcd_loop
+
+first_greater:
+- 100 102 100
+jmp gcd_loop
+
+found_gcd:
+out 100
+jmp end
+
+first_zero:
+in 102
+out 102
+jmp end
+
+second_zero:
+out 100
+
+end:
+exit

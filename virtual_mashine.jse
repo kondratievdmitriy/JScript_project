@@ -1,0 +1,188 @@
+var FSO = new ActiveXObject("Scripting.FileSystemObject");
+WScript.StdOut.Write("Enter the name of the download file: ");
+var filename = WScript.StdIn.ReadLine();
+var file = FSO.OpenTextFile(filename, 1);
+var p_lines = [];
+
+while (!file.AtEndOfStream) {
+	var line = file.ReadLine();
+	if (line && line.length > 0) {
+		while (line.length > 0 && line.charAt(0) == ' ') {
+			line = line.substring(1);
+		}
+		while (line.length > 0 && line.charAt(line.length - 1) == ' ') {
+			line = line.substring(0, line.length - 1);
+		}
+		if (line.length > 0) {
+			p_lines.push(line);
+		}
+	}
+}
+file.Close();
+
+var mem = new Array();
+var ip = 0;
+var flag = false;
+var input = [];
+var output = [];
+
+for (var i = 0; i < 256; i++) {
+	mem[i] = 0;
+}
+
+var labels = {};
+var bytecode = [];
+
+for (var i = 0; i < p_lines.length; i++) {
+	var line = p_lines[i];
+	if (line.charAt(line.length - 1) == ':') {
+		labels[line.substring(0, line.length - 1)] = bytecode.length;
+	} else {
+		var parts = line.split(/\s+/);
+		var command = parts[0];
+		var args = [];
+		
+		for (var j = 1; j < parts.length; j++) {
+			var arg = parts[j];
+			if (!isNaN(parseInt(arg))) {
+				args.push(parseInt(arg));
+			} else {
+				args.push(arg);
+			}
+		}
+		
+		if (command) {
+			bytecode.push(command);
+			for (var k = 0; k < args.length; k++) {
+				bytecode.push(args[k]);
+			}
+		}
+	}
+}
+
+var finalCode = [];
+for (var i = 0; i < bytecode.length; i++) {
+	if (typeof bytecode[i] === 'string' && labels[bytecode[i]] !== undefined) {
+		finalCode.push(labels[bytecode[i]]);
+	} else {
+		finalCode.push(bytecode[i]);
+	}
+}
+
+var inputIndex = 0;
+
+for (var i = 0; i < finalCode.length && i < 256; i++) {
+	mem[i] = finalCode[i];
+}
+
+while (ip >= 0 && ip < 256) {
+	var cmd = mem[ip];
+	
+	switch(cmd) {
+		case "const":
+			mem[mem[ip + 1]] = mem[ip + 2];
+			ip += 3;
+			break;
+			
+		case "+":
+			var a = mem[ip + 1];
+			var b = mem[ip + 2];
+			var result = mem[ip + 3];
+			mem[result] = mem[a] + mem[b];
+			ip += 4;
+			break;
+			
+		case "-":
+			var a = mem[ip + 1];
+			var b = mem[ip + 2];
+			var result = mem[ip + 3];
+			mem[result] = mem[a] - mem[b];
+			ip += 4;
+			break;
+			
+		case "*":
+			var a = mem[ip + 1];
+			var b = mem[ip + 2];
+			var result = mem[ip + 3];
+			mem[result] = mem[a] * mem[b];
+			ip += 4;
+			break;
+			
+		case "==":
+			var a = mem[ip + 1];
+			var b = mem[ip + 2];
+			flag = (mem[a] === mem[b]);
+			ip += 3;
+			break;
+			
+		case "je":
+			var target = mem[ip + 1];
+			if (flag) ip = target;
+			else ip += 2;
+			break;
+			
+		case "jne":
+			var target = mem[ip + 1];
+			if (!flag) ip = target;
+			else ip += 2;
+			break;
+			
+		case ">":
+			var a = mem[ip + 1];
+			var b = mem[ip + 2];
+			var target = mem[ip + 3];
+			if (mem[a] > mem[b]) ip = target;
+			else ip += 4;
+			break;
+			
+		case "<":
+			var a = mem[ip + 1];
+			var b = mem[ip + 2];
+			var target = mem[ip + 3];
+			if (mem[a] < mem[b]) ip = target;
+			else ip += 4;
+			break;
+			
+		case "jmp":
+			var target = mem[ip + 1];
+			ip = target;
+			break;
+			
+        case "in":
+            var addr = mem[ip + 1];
+            if (inputIndex < input.length) {
+                mem[addr] = input[inputIndex];
+                inputIndex++;
+            } else {
+                var validInput = false;
+                while (!validInput) {
+                    WScript.StdOut.Write("Input (integer): ");
+                    var userInput = WScript.StdIn.ReadLine();
+                    if (/^\d+$/.test(userInput)) {
+                        mem[addr] = parseInt(userInput);
+                        validInput = true;
+                    } else {
+                        WScript.Echo("Error: enter an integer!");
+                    }
+                }
+            }
+            ip += 2;
+            break;
+			
+		case "out":
+			var addr = mem[ip + 1];
+			var value = mem[addr];
+			output.push(value);
+			WScript.Echo("Conclusion: " + value);
+			ip += 2;
+			break;
+			
+		case "exit":
+			ip = -1;
+			break;
+			
+		default:
+			ip++;
+			break;
+	}
+}

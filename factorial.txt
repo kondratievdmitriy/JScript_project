@@ -1,0 +1,22 @@
+start:
+in 100
+const 101 1
+const 102 1
+const 103 0
+== 100 103
+je zero_case
+const 104 1
+
+fact_loop:
+* 104 100 104
+- 100 101 100
+> 100 103 fact_loop
+out 104
+jmp end
+
+zero_case:
+out 102
+jmp end
+
+end:
+exit
