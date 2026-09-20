@@ -9,6 +9,7 @@ var fso = new ActiveXObject("Scripting.FileSystemObject");
  * @param {string} pattern - искомый шаблон (подстрока)
  * @returns {Array} - двумерная структура: delta[состояние][символ] = следующее_состояние
  */
+
 function buildAutomaton(pattern) {
     var m = pattern.length;          // Длина шаблона (максимальное состояние автомата)
     var alphabet = {};               // Словарь уникальных символов в шаблоне (алфавит автомата)
