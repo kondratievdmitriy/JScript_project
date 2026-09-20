@@ -1,271 +1,186 @@
-// Файл: boyer_moore.js
-// Запуск: cscript boyer_moore.js
-
-// Класс для работы с файлами
+// Создаем объект FileSystemObject для работы с файлами в среде Windows Script Host (WSH)
 var fso = new ActiveXObject("Scripting.FileSystemObject");
 
-// Функция для создания таблицы плохого символа
+/**
+ * Функция buildBadCharTable(pattern)
+ * Строит таблицу сдвигов по правилу «плохого символа» (Bad Character Rule).
+ * Если символ в тексте не совпадает с символом в шаблоне, мы можем безопасно
+ * сдвинуть шаблон так, чтобы этот «плохой» символ текста совпал с его последним
+ * вхождением в шаблоне (или уйти за пределы шаблона, если такого символа нет).
+ *
+ * @param {string} pattern - искомый шаблон (подстрока)
+ * @returns {Object} - таблица: table[символ] = величина сдвига
+ */
+
 function buildBadCharTable(pattern) {
     var table = {};
     var m = pattern.length;
-    
-    // Для всех символов алфавита (ASCII) инициализируем сдвиг = длине шаблона
-    for (var i = 0; i < 256; i++) {
-        table[String.fromCharCode(i)] = m;
+
+    // Проходим по всем символам шаблона слева направо
+    for (var i = 0; i < m; i++) {
+        var ch = pattern.charAt(i);
+        
+        // Вычисляем сдвиг: расстояние от текущей позиции до конца шаблона минус 1.
+        // Формула: (m - 1) - i, но в коде ниже используется m - i - 1.
+        // Например, для шаблона "ABC":
+        //   'A' (i=0): сдвиг = 3 - 0 - 1 = 2 (если встретили 'A', можно сдвинуть на 2 позиции)
+        //   'B' (i=1): сдвиг = 3 - 1 - 1 = 1
+        //   'C' (i=2): сдвиг = 3 - 2 - 1 = 0 (но мы берем минимум 1, чтобы не застрять)
+        var shift = Math.max(1, m - i - 1);
+        
+        // В таблицу записывается сдвиг для данного символа.
+        // Важный нюанс: если символ встречается в шаблоне несколько раз,
+        // в этой простой реализации сохранится сдвиг для его последнего вхождения,
+        // потому что цикл идет слева направо и перезаписывает значения.
+        table[ch] = shift;
     }
-    
-    // Для символов в шаблоне вычисляем сдвиг от конца
-    for (var i = 0; i < m - 1; i++) {
-        table[pattern.charAt(i)] = m - 1 - i;
-    }
-    
+
     return table;
 }
 
-// Функция для создания таблицы суффиксов (упрощенная версия)
-function buildSuffixTable(pattern) {
-    var m = pattern.length;
-    var suffixes = new Array(m);
-    var prefix = new Array(m);
+/**
+ * Функция printBadCharTable(pattern, table)
+ * Красиво выводит таблицу сдвигов в консоль, показывая только уникальные символы.
+ *
+ * @param {string} pattern - шаблон
+ * @param {Object} table - таблица сдвигов
+ */
+function printBadCharTable(pattern, table) {
+    WScript.Echo("Shift table (Bad Character Rule):");
     
-    // Инициализация
-    for (var i = 0; i < m; i++) {
-        suffixes[i] = -1;
-        prefix[i] = false;
-    }
+    var displayed = {}; // Вспомогательный объект, чтобы не выводить один символ дважды
     
-    // Поиск максимальных суффиксов
-    for (var i = 0; i < m - 1; i++) {
-        var j = i;
-        var k = 0;
+    for (var i = 0; i < pattern.length; i++) {
+        var ch = pattern.charAt(i);
         
-        while (j >= 0 && pattern.charAt(j) == pattern.charAt(m - 1 - k)) {
-            j--;
-            k++;
-            suffixes[k] = j + 1;
-        }
-        
-        if (j == -1) {
-            prefix[k] = true;
+        // Если этот символ еще не выводили, печатаем его сдвиг
+        if (!displayed[ch]) {
+            WScript.Echo("  '" + ch + "' -> shift by " + table[ch] + " positions");
+            displayed[ch] = true;
         }
     }
-    
-    // Создание таблицы сдвигов для хорошего суффикса
-    var shiftTable = new Array(m + 1);
-    for (var i = 0; i <= m; i++) {
-        shiftTable[i] = m;
-    }
-    
-    // Заполнение таблицы сдвигов
-    for (var i = m - 1; i >= 0; i--) {
-        if (suffixes[i] != -1) {
-            shiftTable[m - i] = m - 1 - suffixes[i];
-        }
-    }
-    
-    // Дополнительные сдвиги для префиксов
-    for (var i = 1; i < m; i++) {
-        if (prefix[i]) {
-            for (var j = 0; j <= m; j++) {
-                if (shiftTable[j] == m) {
-                    shiftTable[j] = m - i;
-                }
-            }
-        }
-    }
-    
-    return shiftTable;
 }
 
-// Поиск с использованием правила плохого символа
+/**
+ * Функция searchBadChar(text, pattern)
+ * Выполняет поиск всех вхождений шаблона в тексте, используя правило плохого символа.
+ * Это упрощенная версия алгоритма Бойера-Мура (без правила хорошего суффикса).
+ *
+ * @param {string} text - текст для поиска
+ * @param {string} pattern - искомый шаблон
+ * @returns {Array} - массив начальных индексов (0-based) найденных вхождений
+ */
 function searchBadChar(text, pattern) {
-    var n = text.length;
-    var m = pattern.length;
+    var n = text.length;      // Длина текста
+    var m = pattern.length;   // Длина шаблона
+    
+    // Строим таблицу сдвигов заранее
     var badCharTable = buildBadCharTable(pattern);
-    var result = [];
     
-    var shift = 0;
-    while (shift <= n - m) {
-        var j = m - 1;
-        
-        // Сравнение справа налево
-        while (j >= 0 && pattern.charAt(j) == text.charAt(shift + j)) {
+    var results = []; // Массив для хранения позиций найденных подстрок
+    
+    // Начинаем поиск с позиции m - 1 (конец первого потенциального окна в тексте)
+    var i = m - 1;
+
+    // Пока текущая позиция i находится в пределах текста
+    while (i < n) {
+        var j = m - 1; // Индекс символа в шаблоне (начинаем сравнение с конца)
+        var k = i;     // Индекс символа в тексте (соответствует j)
+
+        // Внутренний цикл: сравниваем символы шаблона и текста справа налево
+        // Продолжаем, пока не дойдем до начала шаблона (j >= 0) и пока символы совпадают
+        while (j >= 0 && text.charAt(k) === pattern.charAt(j)) {
             j--;
+            k--;
         }
-        
+
+        // Если j < 0, значит, мы успешно прошли весь шаблон и все символы совпали
         if (j < 0) {
-            // Найдено совпадение
-            result.push(shift);
-            shift += (shift + m < n) ? m : 1;
-        } else {
-            // Сдвиг по таблице плохого символа
-            var badCharShift = badCharTable[text.charAt(shift + j)] || m;
-            shift += Math.max(1, badCharShift - (m - 1 - j));
-        }
-    }
-    
-    return result;
-}
-
-// Поиск с использованием правила хорошего суффикса
-function searchGoodSuffix(text, pattern) {
-    var n = text.length;
-    var m = pattern.length;
-    var suffixTable = buildSuffixTable(pattern);
-    var result = [];
-    
-    var shift = 0;
-    while (shift <= n - m) {
-        var j = m - 1;
-        
-        // Сравнение справа налево
-        while (j >= 0 && pattern.charAt(j) == text.charAt(shift + j)) {
-            j--;
-        }
-        
-        if (j < 0) {
-            // Найдено совпадение
-            result.push(shift);
-            shift += suffixTable[0];
-        } else {
-            // Сдвиг по таблице хорошего суффикса
-            var goodSuffixShift = suffixTable[m - 1 - j];
-            shift += goodSuffixShift;
-        }
-    }
-    
-    return result;
-}
-
-// Основная функция
-function main() {
-    WScript.Echo("=== Алгоритм Бойера-Мура ===");
-    
-    // Чтение текста из файла
-    var fileName = "ex_text.txt";
-    var text = "";
-    
-    try {
-        if (fso.FileExists(fileName)) {
-            var file = fso.OpenTextFile(fileName, 1); // 1 = ForReading
-            text = file.ReadAll();
-            file.Close();
-            WScript.Echo("Текст успешно загружен из файла: " + fileName);
-            WScript.Echo("Длина текста: " + text.length + " символов");
-        } else {
-            WScript.Echo("Файл " + fileName + " не найден. Создаю пример файла...");
+            // k сейчас указывает на позицию перед началом совпадения, поэтому начало = k + 1
+            results.push(k + 1);
             
-            // Создаем пример файла
-            var file = fso.CreateTextFile(fileName, true);
-            file.WriteLine("В этом примере текста мы будем искать подстроки.");
-            file.WriteLine("Алгоритм Бойера-Мура эффективен для поиска.");
-            file.WriteLine("Поиск подстроки в строке - важная задача.");
-            file.Close();
+            // После нахождения совпадения сдвигаем окно на 1 позицию вперед,
+            // чтобы искать следующее вхождение (в этой реализации).
+            i++;
+        } else {
+            // Если совпадение не полное, мы остановились на «плохом символе».
+            // text.charAt(k) — это символ в тексте, который не совпал с pattern.charAt(j)
+            var badChar = text.charAt(k);
             
-            // Перечитываем файл
-            file = fso.OpenTextFile(fileName, 1);
-            text = file.ReadAll();
-            file.Close();
-            WScript.Echo("Пример файла создан и загружен.");
-        }
-    } catch (e) {
-        WScript.Echo("Ошибка при работе с файлом: " + e.message);
-        return;
-    }
-    
-    // Ввод подстроки для поиска
-    WScript.Echo("\nВведите подстроку для поиска:");
-    var pattern = WScript.StdIn.ReadLine();
-    
-    if (!pattern || pattern.length === 0) {
-        WScript.Echo("Подстрока не может быть пустой!");
-        return;
-    }
-    
-    WScript.Echo("Длина подстроки: " + pattern.length + " символов");
-    
-    // Выбор метода поиска
-    WScript.Echo("\nВыберите метод поиска:");
-    WScript.Echo("1 - Правило плохого символа");
-    WScript.Echo("2 - Правило хорошего суффикса");
-    WScript.Echo("Введите номер метода (1 или 2):");
-    
-    var method = parseInt(WScript.StdIn.ReadLine());
-    var results = [];
-    var startTime, endTime;
-    
-    // Выполнение поиска выбранным методом
-    if (method === 1) {
-        WScript.Echo("\nИспользуется правило плохого символа...");
-        startTime = new Date().getTime();
-        results = searchBadChar(text, pattern);
-        endTime = new Date().getTime();
-    } else if (method === 2) {
-        WScript.Echo("\nИспользуется правило хорошего суффикса...");
-        startTime = new Date().getTime();
-        results = searchGoodSuffix(text, pattern);
-        endTime = new Date().getTime();
-    } else {
-        WScript.Echo("Неверный выбор метода!");
-        return;
-    }
-    
-    // Вывод результатов
-    var searchTime = endTime - startTime;
-    
-    WScript.Echo("\n=== РЕЗУЛЬТАТЫ ПОИСКА ===");
-    WScript.Echo("Метод: " + (method === 1 ? "Плохой символ" : "Хороший суффикс"));
-    WScript.Echo("Подстрока: \"" + pattern + "\"");
-    WScript.Echo("Время поиска: " + searchTime + " мс");
-    
-    if (results.length === 0) {
-        WScript.Echo("Подстрока не найдена.");
-    } else {
-        WScript.Echo("Найдено вхождений: " + results.length);
-        WScript.Echo("Позиции в тексте (начиная с 0):");
-        
-        // Выводим первые 10 позиций, чтобы не перегружать вывод
-        var maxToShow = Math.min(results.length, 10);
-        for (var i = 0; i < maxToShow; i++) {
-            WScript.Echo("  " + results[i] + ": ..." + 
-                        text.substring(Math.max(0, results[i] - 10), 
-                                      Math.min(text.length, results[i] + pattern.length + 10)) + "...");
-        }
-        
-        if (results.length > 10) {
-            WScript.Echo("  ... и еще " + (results.length - 10) + " вхождений");
+            // Получаем величину сдвига из таблицы.
+            // Если символа badChar нет в таблице (он не встречался в шаблоне),
+            // используем безопасный сдвиг на всю длину шаблона (m).
+            var shift = badCharTable[badChar] || m;
+            
+            // Сдвигаем основную позицию i на величину shift
+            i += shift;
         }
     }
     
-    // Дополнительная информация
-    WScript.Echo("\n=== ДОПОЛНИТЕЛЬНАЯ ИНФОРМАЦИЯ ===");
-    
-    if (method === 1) {
-        var badCharTable = buildBadCharTable(pattern);
-        WScript.Echo("Таблица плохого символа (первые 5 записей):");
-        var count = 0;
-        for (var char in badCharTable) {
-            if (badCharTable.hasOwnProperty(char) && count < 5) {
-                if (char.charCodeAt(0) >= 32 && char.charCodeAt(0) <= 126) {
-                    WScript.Echo("  '" + char + "' -> " + badCharTable[char]);
-                    count++;
-                }
-            }
-        }
-    } else {
-        var suffixTable = buildSuffixTable(pattern);
-        WScript.Echo("Таблица хорошего суффикса:");
-        for (var i = 0; i < Math.min(suffixTable.length, 10); i++) {
-            WScript.Echo("  shift[" + i + "] = " + suffixTable[i]);
-        }
-    }
-    
-    WScript.Echo("\nПоиск завершен!");
+    return results;
 }
 
-// Запуск основной функции
-try {
-    main();
-} catch (e) {
-    WScript.Echo("Произошла ошибка: " + e.message);
+// --- Основная программа (скрипт для WSH) ---
+
+WScript.Echo("\nEnter the file name with a string: ");
+// Читаем имя файла из стандартного ввода (консоли)
+var fileName = WScript.StdIn.ReadLine();
+var text = "";
+
+// Проверяем существование файла и читаем его содержимое
+if (fso.FileExists(fileName)) {
+    // Открываем файл для чтения (режим 1 = ForReading)
+    var file = fso.OpenTextFile(fileName, 1);
+    text = file.ReadAll();
+    file.Close();
+    WScript.Echo("The text has been successfully loaded from the file: " + fileName);
+} else {
+    WScript.Echo("File " + fileName + " not found.");
+    WScript.Echo("End of work.");
+    WScript.Quit(); // Завершаем скрипт, так как файла нет
+}
+
+WScript.Echo("\nEnter the search substring:");
+var pattern = WScript.StdIn.ReadLine();
+
+// Проверка на пустую подстроку
+if (!pattern || pattern.length === 0) {
+    WScript.Echo("The substring cannot be empty!");
+    WScript.Quit();
+}
+
+// Строим и выводим таблицу сдвигов для наглядности
+var badCharTable = buildBadCharTable(pattern);
+printBadCharTable(pattern, badCharTable);
+
+// Замеряем время начала поиска
+var startTime = new Date().getTime();
+
+// Выполняем поиск
+var results = searchBadChar(text, pattern);
+
+// Замеряем время окончания поиска
+var endTime = new Date().getTime();
+
+WScript.Echo("\n=== Search results ===");
+WScript.Echo("Substring: \"" + pattern + "\"");
+WScript.Echo("Search time: " + (endTime - startTime) + " ms");
+
+if (results.length === 0) {
+    WScript.Echo("The substring was not found.");
+} else {
+    WScript.Echo("Occurrences have been detected: " + results.length);
+    WScript.Echo("Positions (0-based index):");
+    
+    // Показываем не более 10 первых позиций, чтобы не засорять консоль
+    var maxShow = 10;
+    var toShow = Math.min(results.length, maxShow);
+    
+    for (var i = 0; i < toShow; i++) {
+        WScript.Echo("  Position " + results[i]);
+    }
+    
+    if (results.length > maxShow) {
+        WScript.Echo("... and " + (results.length - maxShow) + " more occurrences.");
+    }
 }
