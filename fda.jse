@@ -1,42 +1,58 @@
-// JScript: Поиск подстроки в строке с использованием конечного автомата
-// Строка читается из файла, подстрока вводится с консоли
-
+// Создаем объект FileSystemObject для работы с файлами в среде Windows Script Host (WSH)
 var fso = new ActiveXObject("Scripting.FileSystemObject");
-var ForReading = 1;
 
-// Функция построения таблицы переходов автомата
+/**
+ * Функция buildAutomaton(pattern)
+ * Строит таблицу переходов (delta) для конечного детерминированного автомата,
+ * который распознает заданный шаблон (pattern).
+ * 
+ * @param {string} pattern - искомый шаблон (подстрока)
+ * @returns {Array} - двумерная структура: delta[состояние][символ] = следующее_состояние
+ */
 function buildAutomaton(pattern) {
-    var m = pattern.length;
-    var alphabet = {};
+    var m = pattern.length;          // Длина шаблона (максимальное состояние автомата)
+    var alphabet = {};               // Словарь уникальных символов в шаблоне (алфавит автомата)
     
-    // Собираем все символы из шаблона
+    // Заполняем алфавит: собираем все уникальные символы, встречающиеся в шаблоне
     for (var i = 0; i < m; i++) {
         alphabet[pattern.charAt(i)] = true;
     }
     
-    // Создаем таблицу переходов: delta[state][char]
+    // delta - это таблица переходов: delta[state][char] = newState
+    // Создаем массив состояний от 0 до m (всего m+1 состояний)
     var delta = new Array(m + 1);
     for (var state = 0; state <= m; state++) {
-        delta[state] = new Object();
+        delta[state] = new Object(); // Для каждого состояния создаем объект переходов по символам
     }
     
-    // Для каждого состояния и каждого символа алфавита вычисляем переход
+    // Заполняем таблицу переходов для каждого состояния и каждого символа алфавита
     for (var state = 0; state <= m; state++) {
         for (var char in alphabet) {
-            // Находим длину наибольшего префикса, который является суффиксом
-            // строки (текущий совпавший префикс + новый символ)
+            // Начинаем проверку с максимально возможного нового состояния
+            // Оно не может быть больше длины шаблона и не больше (текущее состояние + 1)
             var k = Math.min(m, state + 1);
             
+            // Ищем наибольшее k, такое что префикс шаблона длины k совпадает с суффиксом строки,
+            // полученной добавлением символа char к префиксу длины state.
+            // Это ключевой шаг алгоритма построения КДА для поиска подстрок.
             while (k > 0) {
+                // Префикс шаблона длины k: первые k символов шаблона
                 var prefix = pattern.substring(0, k);
+                
+                // Суффикс: берем последние (state) символов текущего префикса (до добавления char)
+                // и добавляем текущий символ char. 
+                // pattern.substring(state + 1 - k, state) берет последние (k-1) символов префикса длины state
+                // (если state < k, substring корректно обработает границы, но логика алгоритма подразумевает state >= k-1)
                 var suffix = pattern.substring(state + 1 - k, state) + char;
                 
+                // Если префикс и суффикс совпадают, значит, мы нашли новое состояние k
                 if (prefix === suffix) {
-                    break;
+                    break; // Нашли подходящее k, выходим из цикла while
                 }
-                k--;
+                k--; // Иначе пробуем меньшую длину префикса
             }
             
+            // Записываем найденное состояние перехода
             delta[state][char] = k;
         }
     }
@@ -44,101 +60,117 @@ function buildAutomaton(pattern) {
     return delta;
 }
 
-// Функция поиска всех вхождений подстроки в тексте
+/**
+ * Функция search(text, pattern)
+ * Ищет все вхождения шаблона pattern в тексте text с использованием построенного автомата.
+ * 
+ * @param {string} text - текст для поиска
+ * @param {string} pattern - искомый шаблон
+ * @returns {Array} - массив начальных позиций (индексов) найденных вхождений
+ */
 function search(text, pattern) {
+    // Проверка на пустой шаблон
     if (pattern.length === 0) {
-        WScript.Echo("Ошибка: подстрока пустая");
+        WScript.Echo("Error: the substring is empty");
         return;
     }
     
-    var m = pattern.length;
-    var n = text.length;
+    var m = pattern.length; // Длина шаблона
+    var n = text.length;    // Длина текста
     
-    // Строим автомат
+    // Строим автомат (таблицу переходов) заранее, чтобы не пересчитывать её для каждого символа текста
     var delta = buildAutomaton(pattern);
     
-    // Поиск
-    var state = 0;
-    var positions = new Array();
+    var state = 0;                 // Начальное состояние автомата (0 означает, что совпадений пока нет)
+    var positions = new Array();   // Массив для хранения индексов начала найденных подстрок
     
+    // Проходим по каждому символу текста
     for (var i = 0; i < n; i++) {
         var char = text.charAt(i);
         
-        // Если символ есть в таблице переходов, используем её
+        // Если текущий символ есть в алфавите шаблона, переходим по таблице delta
         if (delta[state][char] !== undefined) {
             state = delta[state][char];
         } else {
-            // Иначе переходим в начальное состояние
+            // Если символа нет в алфавите (или переход не определен), сбрасываем состояние в 0
+            // В данной реализации, так как алфавит строится только по символам шаблона,
+            // любой символ, не входящий в шаблон, приведет к этому блоку.
             state = 0;
         }
         
-        // Если достигли конечного состояния - нашли вхождение
+        // Если мы достигли состояния m, значит, шаблон полностью совпал с суффиксом прочитанной части текста
         if (state === m) {
-            positions.push(i - m + 2); // +2 потому что индексация с 1 и нулевой символ
-            state = 0; // Продолжаем поиск дальше
+            // Вычисляем индекс начала совпадения: текущий индекс минус длина шаблона плюс 1
+            positions.push(i - m + 1);
+            
+            // После нахождения полного совпадения сбрасываем состояние в 0,
+            // чтобы искать следующие вхождения независимо (без перекрытия).
+            // Примечание: если нужно искать перекрывающиеся вхождения (например, "ana" в "banana"),
+            // здесь нужно использовать значение delta[m][char] или специальную логику,
+            // но в данной реализации выбран сброс в 0.
+            state = 0;
         }
     }
     
     return positions;
 }
 
-// ============ ОСНОВНАЯ ПРОГРАММА ============
+// --- Основная программа (скрипт для WSH) ---
 
-WScript.Echo("=== Поиск подстроки методом конечного автомата ===");
+WScript.Echo("=== Substring search using the finite automaton method ===");
 
-// Имя файла задано жестко (можно изменить)
-var fileName = "text_fda.txt";
+WScript.Echo("\nEnter the file name with a string: ");
+// Читаем имя файла из стандартного ввода (консоли)
+var fileName = WScript.StdIn.ReadLine();
 
 // Проверяем существование файла
 if (!fso.FileExists(fileName)) {
-    WScript.Echo("Ошибка: файл '" + fileName + "' не найден!");
-    WScript.Quit(1);
+    WScript.Echo("Error: file '" + fileName + "' not found!");
+    WScript.Quit(1); // Завершаем скрипт с кодом ошибки 1
 }
 
-// Читаем текст из файла
-var file = fso.OpenTextFile(fileName, ForReading);
+// Открываем файл, читаем всё содержимое в переменную text, закрываем файл
+var file = fso.OpenTextFile(fileName);
 var text = file.ReadAll();
 file.Close();
 
-WScript.Echo("Текст успешно загружен из файла '" + fileName + "'");
-WScript.Echo("Длина текста: " + text.length + " символов");
+WScript.Echo("The text has been successfully loaded from the file. '" + fileName + "'");
 
-// Вводим подстроку с консоли
-WScript.StdOut.Write("Введите подстроку для поиска: ");
-var pattern = WScript.StdIn.ReadLine().trim();
+WScript.StdOut.Write("\nEnter the search substring: ");
+var pattern = WScript.StdIn.ReadLine();
 
-if (pattern.length === 0) {
-    WScript.Echo("Ошибка: подстрока не введена");
-    WScript.Quit(1);
+// Проверка на пустую подстроку
+if (!pattern || pattern.length === 0) {
+    WScript.Echo("The substring cannot be empty!");
+    WScript.Quit();
 }
 
-WScript.Echo("\nВыполняется поиск подстроки '" + pattern + "'...");
+WScript.Echo("\nThe substring is being searched for. '" + pattern + "'...");
 
-// Выполняем поиск
+// Замеряем время начала поиска
+var startTime = new Date().getTime();
 var positions = search(text, pattern);
+// Замеряем время окончания поиска
+var endTime = new Date().getTime();
 
-// Выводим результаты
+// Вывод результатов
 if (positions.length === 0) {
-    WScript.Echo("Подстрока '" + pattern + "' НЕ найдена в тексте.");
+    WScript.Echo("Substring '" + pattern + "' not found in the text.");
 } else {
-    WScript.Echo("Подстрока '" + pattern + "' найдена " + positions.length + " раз(а):");
-    for (var i = 0; i < positions.length; i++) {
-        WScript.Echo("  Позиция " + positions[i] + " (символ №" + positions[i] + ")");
+    WScript.Echo("Search time: " + (endTime - startTime) + " ms");
+    WScript.Echo("Substring '" + pattern + "' found " + positions.length + " times:");
+    
+    // Показываем не более 10 первых позиций, чтобы не засорять консоль
+    var maxShow = 10;
+    var toShow = Math.min(positions.length, maxShow);
+    
+    for (var i = 0; i < toShow; i++) {
+        WScript.Echo("  Position " + positions[i]);
     }
     
-    // Показываем контекст найденных вхождений
-    WScript.Echo("\nКонтекст найденных вхождений:");
-    for (var i = 0; i < positions.length; i++) {
-        var pos = positions[i] - 1; //转换为0-based索引
-        var start = Math.max(0, pos - 20);
-        var end = Math.min(text.length, pos + pattern.length + 20);
-        var context = text.substring(start, end);
-        
-        if (start > 0) context = "..." + context;
-        if (end < text.length) context = context + "...";
-        
-        WScript.Echo("Вхождение " + (i + 1) + ": " + context);
+    if (positions.length > maxShow) {
+        WScript.Echo("... and " + (positions.length - maxShow) + " more occurrences.");
     }
 }
 
-WScript.Echo("\nПоиск завершен.");
+WScript.Echo("\nThe search is complete.");
