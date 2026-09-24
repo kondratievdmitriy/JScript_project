@@ -1,0 +1,276 @@
+var fso = new ActiveXObject("Scripting.FileSystemObject");
+var args = WScript.Arguments;
+
+if (args.Length != 3) {
+    WScript.Echo("Usage: CScript rle.jse <mode> <inputFile> <outputFile>");
+    WScript.Echo("Modes: codeEscape, codeJump, decodeEscape, decodeJump, check");
+    WScript.Quit(1);
+}
+
+var mode = args(0).toLowerCase();
+var inputFile = args(1);
+var outputFile = args(2);
+
+if (!fso.FileExists(inputFile)) {
+    WScript.Echo("Error: Input file '" + inputFile + "' not found.");
+    WScript.Quit(1);
+}
+
+var ESCAPE_CHAR = "#";
+
+function codeEscape(data) {
+    var compressed = "";
+    var i = 0;
+    while (i < data.length) {
+        var currentChar = data.charAt(i);
+        var count = 1;
+
+        while (i + count < data.length && data.charAt(i + count) == currentChar) {
+            count++;
+        }
+
+        if (currentChar == ESCAPE_CHAR) {
+            var remaining = count;
+            while (remaining > 0) {
+                var chunk = Math.min(remaining, 255);
+                compressed += ESCAPE_CHAR + String.fromCharCode(chunk) + ESCAPE_CHAR;
+                remaining -= chunk;
+            }
+            i += count;
+        } else if (count >= 4) {
+            var remaining = count;
+            while (remaining > 0) {
+                var chunk = Math.min(remaining, 259);
+                compressed += ESCAPE_CHAR + String.fromCharCode(chunk - 4) + currentChar;
+                remaining -= chunk;
+            }
+            i += count;
+        } else {
+            for (var j = 0; j < count; j++) {
+                compressed += currentChar;
+            }
+            i += count;
+        }
+    }
+    return compressed;
+}
+
+function codeJump(data) {
+    var compressed = "";
+    var i = 0;
+
+    while (i < data.length) {
+        var currentChar = data.charAt(i);
+        var count = 1;
+
+        while (i + count < data.length && data.charAt(i + count) == currentChar) {
+            count++;
+        }
+
+        if (count >= 2) {
+            var remaining = count;
+            while (remaining > 0) {
+                var chunk = Math.min(remaining, 127);
+                compressed += String.fromCharCode(chunk + 128) + currentChar;
+                remaining -= chunk;
+            }
+            i += count;
+        } else {
+            var blockLength = 0;
+
+            while (i + blockLength < data.length && blockLength < 127) {
+                var checkChar = data.charAt(i + blockLength);
+                var checkCount = 1;
+
+                while (i + blockLength + checkCount < data.length && data.charAt(i + blockLength + checkCount) == checkChar) {
+                    checkCount++;
+                }
+
+                if (checkCount >= 2) {
+                    break;
+                }
+                blockLength++;
+            }
+
+            compressed += String.fromCharCode(blockLength);
+            for (var j = 0; j < blockLength; j++) {
+                compressed += data.charAt(i + j);
+            }
+            i += blockLength;
+        }
+    }
+    return compressed;
+}
+
+function decodeEscape(data) {
+    var decompressed = "";
+    var i = 0;
+
+    while (i < data.length) {
+        if (data.charAt(i) == ESCAPE_CHAR && i + 2 < data.length) {
+            var counter = data.charCodeAt(i + 1);
+            var charToRepeat = data.charAt(i + 2);
+
+            if (charToRepeat == ESCAPE_CHAR) {
+                for (var j = 0; j < counter; j++) {
+                    decompressed += charToRepeat;
+                }
+            } else {
+                var actualCount = counter + 4;
+                for (var j = 0; j < actualCount; j++) {
+                    decompressed += charToRepeat;
+                }
+            }
+            i += 3;
+        } else {
+            decompressed += data.charAt(i);
+            i++;
+        }
+    }
+    return decompressed;
+}
+
+function decodeJump(data) {
+    var decompressed = "";
+    var i = 0;
+
+    while (i < data.length) {
+        var flag = data.charCodeAt(i);
+
+        if (flag > 128) {
+            var charToRepeat = data.charAt(i + 1);
+            for (var j = 0; j < flag - 128; j++) {
+                decompressed += charToRepeat;
+            }
+            i += 2;
+        } else {
+            i += 1;
+            for (var j = 0; j < flag; j++) {
+                decompressed += data.charAt(i + j);
+            }
+            i += flag;
+        }
+    }
+    return decompressed;
+}
+
+function check(originalFile, decodedFile) {
+    if (!fso.FileExists(originalFile)) {
+        WScript.Echo("Error: File '" + originalFile + "' not found.");
+        WScript.Quit(1);
+    }
+    if (!fso.FileExists(decodedFile)) {
+        WScript.Echo("Error: File '" + decodedFile + "' not found.");
+        WScript.Quit(1);
+    }
+
+    var f1 = fso.OpenTextFile(originalFile, 1);
+    var f2 = fso.OpenTextFile(decodedFile, 1);
+
+    var identical = true;
+    var position = 0;
+
+    while (!f1.AtEndOfStream && !f2.AtEndOfStream) {
+        var ch1 = f1.Read(1);
+        var ch2 = f2.Read(1);
+
+        if (ch1 != ch2) {
+            identical = false;
+            WScript.Echo("Mismatch at position " + position + ": '" + ch1 + "' != '" + ch2 + "'");
+            break;
+        }
+        position++;
+    }
+
+    if (identical) {
+        if (!f1.AtEndOfStream) {
+            identical = false;
+            WScript.Echo("Original file is longer. Extra characters from position " + position + ".");
+        } else if (!f2.AtEndOfStream) {
+            identical = false;
+            WScript.Echo("Decoded file is longer. Extra characters from position " + position + ".");
+        }
+    }
+
+    f1.Close();
+    f2.Close();
+
+    if (identical) {
+        WScript.Echo("Check: OK. Files are identical (" + position + " characters compared).");
+    } else {
+        WScript.Echo("Check: FAILED. Files are different.");
+    }
+}
+
+if (mode == "codeescape") {
+    var file = fso.OpenTextFile(inputFile, 1);
+    var text = file.ReadAll();
+    file.Close();
+
+    var result = codeEscape(text);
+
+    var outFile = fso.CreateTextFile(outputFile, true);
+    outFile.Write(result);
+    outFile.Close();
+
+    var ratio = (text.length > 0) ? (result.length / text.length * 100).toFixed(2) : "0";
+    WScript.Echo("Mode: codeEscape");
+    WScript.Echo("Input: " + inputFile + " (" + text.length + " chars)");
+    WScript.Echo("Output: " + outputFile + " (" + result.length + " chars)");
+    WScript.Echo("Compression ratio: " + ratio + "%");
+
+} else if (mode == "codejump") {
+    var file = fso.OpenTextFile(inputFile, 1);
+    var text = file.ReadAll();
+    file.Close();
+
+    var result = codeJump(text);
+
+    var outFile = fso.CreateTextFile(outputFile, true);
+    outFile.Write(result);
+    outFile.Close();
+
+    var ratio = (text.length > 0) ? (result.length / text.length * 100).toFixed(2) : "0";
+    WScript.Echo("Mode: codeJump");
+    WScript.Echo("Input: " + inputFile + " (" + text.length + " chars)");
+    WScript.Echo("Output: " + outputFile + " (" + result.length + " chars)");
+    WScript.Echo("Compression ratio: " + ratio + "%");
+
+} else if (mode == "decodeescape") {
+    var file = fso.OpenTextFile(inputFile, 1);
+    var text = file.ReadAll();
+    file.Close();
+
+    var result = decodeEscape(text);
+
+    var outFile = fso.CreateTextFile(outputFile, true);
+    outFile.Write(result);
+    outFile.Close();
+
+    WScript.Echo("Mode: decodeEscape");
+    WScript.Echo("Input: " + inputFile);
+    WScript.Echo("Output: " + outputFile + " (" + result.length + " chars)");
+
+} else if (mode == "decodejump") {
+    var file = fso.OpenTextFile(inputFile, 1);
+    var text = file.ReadAll();
+    file.Close();
+
+    var result = decodeJump(text);
+
+    var outFile = fso.CreateTextFile(outputFile, true);
+    outFile.Write(result);
+    outFile.Close();
+
+    WScript.Echo("Mode: decodeJump");
+    WScript.Echo("Input: " + inputFile);
+    WScript.Echo("Output: " + outputFile + " (" + result.length + " chars)");
+
+} else if (mode == "check") {
+    check(inputFile, outputFile);
+
+} else {
+    WScript.Echo("Unknown mode: " + mode);
+    WScript.Echo("Valid modes: codeEscape, codeJump, decodeEscape, decodeJump, check");
+    WScript.Quit(1);
+}
